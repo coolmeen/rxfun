@@ -6,13 +6,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.connection.ReactiveRedisConnectionFactory;
 import org.springframework.data.redis.core.ReactiveRedisTemplate;
 import org.springframework.stereotype.Service;
-import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Scheduler;
 import reactor.core.scheduler.Schedulers;
 
-import java.time.Duration;
 import java.util.List;
 
 @Service
@@ -34,23 +31,28 @@ public class UserService {
     }
 
 
+    //incase of a cache miss trying to create publisher with two subscribers(redis and user)
     public Flux<User> getAll() {
-        Flux<User> usersFromMongo = getUsersFromMongo().share().publish().autoConnect(2);
+        Flux<User> mongoFlux = getUsersFromMongo().publish().autoConnect(2);
 
-        Long l = System.currentTimeMillis();
-        Disposable subscribe = usersFromMongo
-                .buffer(1)
-                .flatMap(users -> Flux.defer(() -> addUsersToCache(users)).subscribeOn(Schedulers.elastic()))
-                .doOnComplete(() -> System.out.println(System.currentTimeMillis() - l))
-                .subscribe();
-
+        insetToRedisOnCacheMiss(mongoFlux);
 
 
         return getUsersFromCache()
-                .switchIfEmpty(usersFromMongo);
+                .switchIfEmpty(mongoFlux);
+    }
+
+    private void insetToRedisOnCacheMiss(Flux<User> usersFromMongo) {
+        Long l = System.currentTimeMillis();
+        usersFromMongo.subscribeOn(Schedulers.elastic())
+                .buffer(1000)
+                .doOnNext(userFlux -> System.out.println("redis subscriber" + Thread.currentThread()))
+                .flatMapSequential(users -> addUsersToCache(users),40)
+                .subscribe();
     }
 
     private Mono<Long> addUsersToCache(List<User> userList) {
+        System.out.println("added 1000 elements to redis");
         return reactiveRedisOperations
                 .opsForSet()
                 .add("users", userList.toArray(new User[userList.size()]));

@@ -11,6 +11,7 @@ import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
+import reactor.core.scheduler.Schedulers;
 
 import java.time.Duration;
 import java.util.LinkedList;
@@ -30,7 +31,13 @@ public class FunApplication {
 
     @RequestMapping(value = "/getAll",produces = MediaType.APPLICATION_STREAM_JSON_VALUE)
     public Flux<User> getAllDetails() {
-        return userService.getAll().onBackpressureBuffer(1000);
+        return userService.getAll()
+                .window(100)
+                .delayElements(Duration.ofSeconds(1))
+                .flatMap(x->x,2)
+                .doOnNext(userFlux -> System.out.println("user publisher" + Thread.currentThread()))
+                .publishOn(Schedulers.elastic());
+
     }
 
 
@@ -44,7 +51,7 @@ public class FunApplication {
 
     @RequestMapping(value = "/getCache",produces = MediaType.APPLICATION_STREAM_JSON_VALUE)
     public Flux<User> getAllCache() {
-        return userService.getAllFromCache().delayElements(Duration.ofNanos(10));
+        return userService.getAllFromCache();
     }
 
 

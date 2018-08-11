@@ -18,7 +18,7 @@ public class lineRunner implements CommandLineRunner {
         @Override
         public void run(String... args) throws Exception {
             List<User> userList = new LinkedList<>();
-            for(int i = 0;i<100000;i++) {
+            for(int i = 0;i<30000;i++) {
                 userList.add(new User(i,RandomStringUtils.randomAlphabetic(10)));
             }
             userService.insertData(userList);
